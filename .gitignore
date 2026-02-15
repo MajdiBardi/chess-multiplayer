@@ -1,0 +1,31 @@
+# Frontend (Angular)
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/.cache/
+*.tsbuildinfo
+
+# Backend (Java / Maven)
+backend/target/
+backend/data/
+backend/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+*.log
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Env / secrets
+.env
+.env.local
+*.env
+
+# Build / OS
+Thumbs.db

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Documentation détaillée — Frontend (Chess Multiplayer)</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #222; line-height: 1.45; padding: 24px; }
+    h1 { color: #1b3a57; }
+    h2 { color: #245d8c; margin-top: 1.2em; }
+    h3 { color: #2a6f9e; }
+    pre { background:#f4f4f4; padding:12px; border-radius:6px; overflow:auto }
+    code { background:#f4f4f4; padding:2px 4px; border-radius:4px }
+    table { border-collapse: collapse; width:100%; }
+    td, th { border: 1px solid #ddd; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Documentation détaillée — Frontend (Échecs multijoueurs)</h1>
+  <p>Date : 14/02/2026</p>
+
+  <h2>But du document</h2>
+  <p>Ce document explique en détail l'architecture et l'implémentation de la partie front-end du projet <strong>chess-multiplayer (frontend)</strong>. Il couvre l'arborescence principale, le démarrage de l'application, les routes, les composants, les services (auth, websocket, game), les modèles d'échange, et des points d'exécution/résolution de problèmes.</p>
+
+  <h2>Fichiers principaux analysés</h2>
+  <ul>
+    <li><code>src/main.ts</code></li>
+    <li><code>src/index.html</code></li>
+    <li><code>src/app/app.config.ts</code></li>
+    <li><code>src/app/app.routes.ts</code></li>
+    <li><code>src/app/app.component.ts</code></li>
+    <li><code>src/app/services/auth.service.ts</code></li>
+    <li><code>src/app/services/websocket.service.ts</code></li>
+    <li><code>src/app/services/game.service.ts</code></li>
+    <li><code>src/app/interceptors/auth.interceptor.ts</code></li>
+    <li><code>src/app/guards/auth.guard.ts</code></li>
+    <li><code>src/app/pages/login/login.component.ts</code></li>
+    <li><code>src/app/pages/register/register.component.ts</code></li>
+    <li><code>src/app/pages/lobby/lobby.component.ts</code></li>
+    <li><code>src/app/pages/game/game.component.ts</code></li>
+    <li><code>src/app/components/chess-board/chess-board.component.ts</code></li>
+    <li><code>src/styles.css</code></li>
+    <li><code>proxy.conf.json</code> (configuration de proxy devserver)</li>
+  </ul>
+
+  <h2>1) Démarrage et configuration</h2>
+  <h3>Entrée de l'application</h3>
+  <p><code>src/main.ts</code> utilise l'API de l'Angular moderne (bootstrapApplication) avec un <code>appConfig</code> fourni. Cela signifie que l'application est bootstrappée en mode standalone (component-based providers) :</p>
+  <pre><code>bootstrapApplication(AppComponent, appConfig)</code></pre>
+
+  <h3>Configuration</h3>
+  <p><code>src/app/app.config.ts</code> rassemble :</p>
+  <ul>
+    <li><code>provideZoneChangeDetection({ eventCoalescing: true })</code> : optimisation de détection de changement.</li>
+    <li><code>provideRouter(routes)</code> : routes de l'app définies dans <code>app.routes.ts</code>.</li>
+    <li><code>provideHttpClient(withFetch(), withInterceptors([authInterceptor]))</code> : HTTP client moderne d'Angular avec l'intercepteur d'authentification.</li>
+  </ul>
+
+  <h3>index.html</h3>
+  <p>Contient un petit script polyfill qui définit <code>global</code> dans <code>globalThis</code>, nécessaire pour des bibliothèques comme <code>sockjs-client</code> qui attendent un objet global Node-style :</p>
+  <pre><code>if (typeof globalThis.global === 'undefined') { globalThis.global = globalThis; }</code></pre>
+
+  <h2>2) Routage</h2>
+  <p>Les routes principales (dans <code>src/app/app.routes.ts</code>) :</p>
+  <ul>
+    <li><code>/login</code> — composant de connexion lazy-loaded</li>
+    <li><code>/register</code> — création de compte</li>
+    <li><code>/lobby</code> — hall d'attente, protégé par <code>authGuard</code></li>
+    <li><code>/game/:id</code> — écran de partie, protégé par <code>authGuard</code></li>
+  </ul>
+  <p><code>authGuard</code> (dans <code>src/app/guards/auth.guard.ts</code>) vérifie via <code>AuthService</code> si l'utilisateur est connecté ; sinon il redirige vers <code>/login</code>.</p>
+
+  <h2>3) Services (flux de données et API)</h2>
+  <h3>AuthService (src/app/services/auth.service.ts)</h3>
+  <p>Responsabilités :</p>
+  <ul>
+    <li>Gérer session : sauvegarder token et info utilisateur dans <code>localStorage</code>.</li>
+    <li>Exposer des signaux (Angular signals) : <code>isLoggedIn</code>, <code>currentUsername</code>, <code>currentUserId</code>.</li>
+    <li>Fournir méthodes HTTP : <code>login</code>, <code>register</code> (utilise <code>/api/auth/*</code>).</li>
+    <li>Fournir <code>getToken()</code> pour l'intercepteur HTTP.</li>
+  </ul>
+
+  <h3>auth.interceptor (src/app/interceptors/auth.interceptor.ts)</h3>
+  <p>Intercepte les requêtes HTTP et ajoute l'en-tête <code>Authorization: Bearer &lt;token&gt;</code> pour les URLs qui commencent par <code>/api</code>. Il s'appuie sur <code>AuthService.getToken()</code> pour récupérer le token.</p>
+
+  <h3>GameService (src/app/services/game.service.ts)</h3>
+  <p>Méthodes exposées vers le backend REST :</p>
+  <ul>
+    <li><code>getActiveGames()</code> — liste des parties en cours</li>
+    <li><code>getGame(id)</code> — récupérer détails d'une partie (incluant FEN et coups)</li>
+    <li><code>resign(id)</code> — action pour abandonner</li>
+  </ul>
+
+  <h3>WebSocketService (src/app/services/websocket.service.ts)</h3>
+  <p>C'est le service responsable de la couche temps réel via STOMP + SockJS :</p>
+  <ul>
+    <li>URL WS : <code>/ws</code> (le devserver proxy forwarde vers le backend sur <code>http://localhost:8080</code> selon <code>proxy.conf.json</code>).</li>
+    <li>Utilise <code>@stomp/stompjs</code> pour le client STOMP et <code>sockjs-client</code> (avec le polyfill <code>global</code>).</li>
+    <li>Exposition de sujets RxJS/BehaviorSubject : <code>isConnected$</code>, <code>lobbyUsers$</code>, <code>invitations$</code>, <code>gameMoves$</code>, <code>errors$</code>.</li>
+    <li>Méthodes principales : <code>connect()</code>, <code>disconnect()</code>, <code>send()</code>, <code>invite()</code>, <code>acceptInvitation()</code>, <code>declineInvitation()</code>, <code>subscribeGame()</code>, <code>sendMove()</code>.</li>
+    <li>Gestion de la souscription aux topics STOMP (ex : <code>/topic/lobby/users</code>, <code>/user/queue/invitations</code>, <code>/topic/game/{id}</code>).</li>
+  </ul>
+
+  <h2>4) Pages (UI)</h2>
+  <p>La logique UI est découplée en pages standalone (Angular standalone components) : login, register, lobby, game.</p>
+
+  <h3>Login / Register</h3>
+  <p>Composants simples basés sur <code>ngForm</code>, ils appellent <code>AuthService.login/register</code> et redirigent vers <code>/lobby</code> en cas de succès. Ils affichent des messages d'erreur en cas d'échec côté API. Note : les templates utilisent la syntaxe Angular pour les formulaires (validation via <code>ngModel</code>).</p>
+
+  <h3>Lobby (src/app/pages/lobby/lobby.component.ts)</h3>
+  <p>Fonctionnalités :</p>
+  <ul>
+    <li>Affiche la liste des joueurs en ligne (via <code>WebSocketService.lobbyUsers$</code>).</li>
+    <li>Permet d'inviter d'autres joueurs (envoi via ws)</li>
+    <li>Montre les invitations reçues et offre boutons accepter / refuser (envoi via ws).</li>
+    <li>Affiche la liste des parties actives récupérées via <code>GameService.getActiveGames()</code>.</li>
+  </ul>
+
+  <h3>Game (src/app/pages/game/game.component.ts)</h3>
+  <p>C'est la page la plus riche : elle orchestre l'affichage du plateau, la relecture des coups, la gestion du temps restant, et la communication optimiste des coups.</p>
+  <ul>
+    <li>Récupère l'ID via <code>ActivatedRoute</code> et charge la partie (<code>GameService.getGame(id)</code>).</li>
+    <li>Gère le state local via <strong>Angular signals</strong> : <code>game</code>, <code>moves</code>, <code>currentFen</code>, <code>replayIndex</code>, <code>error</code>, etc.</li>
+    <li>S'abonne aux messages temps réel pour la partie via <code>WebSocketService.subscribeGame(id)</code>. Les événements attendus sont de type <code>MOVE</code> et <code>GAME_OVER</code>.</li>
+    <li>Optimistic update : à l'envoi d'un coup (<code>onMove</code>), le coup est ajouté localement (optimistic), le FEN est recalculé pour l'interface, puis le coup est envoyé via STOMP (<code>sendMove</code>).</li>
+    <li>Fonctions importantes : <code>updateFenFromMoves()</code>, <code>buildFenFromMoves()</code>, <code>applyMoveToFen()</code> — utilitaires pour recalculer un FEN à partir d'une liste de coups.
+      <ul>
+        <li><code>applyMoveToFen</code> : applique un déplacement simple sur la chaîne FEN (ne couvre probablement pas toutes les règles d'échecs avancées comme en-passant, roque mis à jour finement, halfmove clock exact, etc.).</li>
+      </ul>
+    </li>
+    <li>La page gère aussi l'interface de relecture (replay controls) et l'affichage des timers en utilisant un intervalle qui met à jour un tick signal pour recalculer les secondes affichées.</li>
+  </ul>
+
+  <h2>5) Composant du plateau d'échecs</h2>
+  <p><code>src/app/components/chess-board/chess-board.component.ts</code> implémente l'affichage du plateau :</p>
+  <ul>
+    <li>Propriétés Input : <code>fen</code>, <code>isWhite</code>, <code>isMyTurn</code>, <code>replayIndex</code>, <code>moves</code>.</li>
+    <li>Events Output : <code>move</code> (émis quand l'utilisateur joue un coup), <code>replayChange</code> (si le composant permettait modification de l'index de relecture).</li>
+    <li>Conversion FEN → grid : <code>fenToGrid</code> et utilitaires <code>pieceCharAt</code>, <code>pieceAt</code> pour afficher des symboles Unicode des pièces.</li>
+    <li>Gestion de sélection locale : <code>selected</code> signal et calcul des <code>highlightSquares</code> (squelette de logique de déplacement minimaliste).</li>
+    <li>Rendering : rendu de la grille en HTML/CSS, cases cliquables et classes CSS pour sélection / surbrillance / couleur.</li>
+  </ul>
+
+  <h2>6) Flux temps réel et API</h2>
+  <p>En mode développement, <code>proxy.conf.json</code> redirige :</p>
+  <pre><code>{
+  "/api": { "target": "http://localhost:8080", "secure": false },
+  "/ws": { "target": "http://localhost:8080", "secure": false, "ws": true }
+}
+</code></pre>
+  <p>Donc le devserver Angular (ng serve) proxifie les appels REST et WebSocket vers le backend situé sur le port 8080. En production, il faudra que le déploiement fournisse l'URL backend appropriée (ou configurer le front pour pointer vers l'API distante).</p>
+
+  <h2>7) Observations & points d'attention</h2>
+  <h3>1. Gestion des règles d'échecs</h3>
+  <p>La logique de mise à jour du FEN (<code>applyMoveToFen</code>) est simple et fonctionne pour des déplacements basiques. Elle peut ne pas gérer :</p>
+  <ul>
+    <li>Roques complexes (mise à jour du droit de roque) dans tous les cas.</li>
+    <li>En-passant (captures passant) et mise à jour précise du halfmove clock ou fullmove number.</li>
+    <li>Validation légale des coups (les vérifications sont basiques : on vérifie seulement la présence d'une pièce et sa casse pour déterminer couleur).</li>
+  </ul>
+  <p>Si vous avez besoin de règles complètes, il est conseillé d'utiliser une bibliothèque d'échecs (p.ex. <code>chess.js</code>) côté front ou backend pour la validation stricte et la génération de FEN/PGN.</p>
+
+  <h3>2. Typage et dépendances</h3>
+  <ul>
+    <li><code>sockjs-client</code> n'a pas de déclaration typée dans le projet ; une <code>src/typings.d.ts</code> a été ajoutée pour déclarer le module. En alternative, vous pouvez installer <code>@types/sockjs-client</code> si disponible.</li>
+    <li>Le projet utilise Angular 17 et les APIs modernes (standalone components, provideHttpClient, signals). Assurez-vous d'utiliser Node et Angular CLI compatibles (Node 18+ conseillé).</li>
+  </ul>
+
+  <h3>3. Sécurité</h3>
+  <ul>
+    <li>Les tokens sont stockés dans <code>localStorage</code>. C'est simple mais sensible aux attaques XSS. Si l'application doit être durcie, envisager des cookies HttpOnly ou d'autres protections CSP/escape des entrées.</li>
+    <li>Le CORS et la configuration du proxy doivent être correctement gérés côté backend pour la production.</li>
+  </ul>
+
+  <h2>8) Comment lancer localement (récapitulatif)</h2>
+  <ol>
+    <li>Installer les dépendances : <code>npm install</code></li>
+    <li>Lancer le dev server : <code>npm start</code> (ou <code>npx ng serve</code>)</li>
+    <li>Ouvrir <code>http://localhost:4200</code></li>
+    <li>Assurez-vous que le backend est en écoute sur <code>http://localhost:8080</code> (REST + STOMP endpoints) pour que les fonctionnalités de lobby &amp; WebSocket fonctionnent.</li>
+  </ol>
+
+  <h2>9) Débogage rapide</h2>
+  <ul>
+    <li>Erreur typée sur <code>sockjs-client</code> : installer types ou ajouter une déclaration : <code>npm i -D @types/sockjs-client</code> ou utiliser <code>src/typings.d.ts</code>.</li>
+    <li>Si <code>ng serve</code> échoue, lire les erreurs dans la console et vérifier les templates (Angular template syntax), imports et versions d'Angular/TypeScript.</li>
+    <li>Pour les erreurs WS, vérifier que le backend accepte la connexion STOMP (endpoint /ws) et que le token JWT est valide.</li>
+  </ul>
+
+  <h2>10) Suggestions d'amélioration (faibles risques)</h2>
+  <ul>
+    <li>Utiliser une bibliothèque d'échecs pour la logique (validation et génération de FEN) : <code>chess.js</code> ou autre.</li>
+    <li>Améliorer la gestion des erreurs côté UI (toasts au lieu de simples messages inline).</li>
+    <li>Considérer tests unitaires pour <code>GameComponent</code> et <code>applyMoveToFen</code> (jeu de cas sur déplacements simples, promotions, roques...).</li>
+    <li>Renforcer sécurité stockage token (si requis par la politique de sécurité).</li>
+  </ul>
+
+  <h2>Annexes — Cartographie rapide des composants</h2>
+  <table>
+    <thead><tr><th>Fichier</th><th>Responsabilité</th></tr></thead>
+    <tbody>
+      <tr><td><code>app.component.ts</code></td><td>Root component (router-outlet)</td></tr>
+      <tr><td><code>login.component.ts</code></td><td>Formulaire de connexion</td></tr>
+      <tr><td><code>register.component.ts</code></td><td>Formulaire d'inscription</td></tr>
+      <tr><td><code>lobby.component.ts</code></td><td>Liste joueurs, invitations, parties actives</td></tr>
+      <tr><td><code>game.component.ts</code></td><td>Écran de partie (UI + logique replay + timers + ws)</td></tr>
+      <tr><td><code>chess-board.component.ts</code></td><td>Affichage plateau et interactions utilisateur (sélection &amp; émission de coups)</td></tr>
+      <tr><td><code>websocket.service.ts</code></td><td>STOMP/SockJS couche temps réel</td></tr>
+      <tr><td><code>game.service.ts</code></td><td>Appels REST vers API /games</td></tr>
+      <tr><td><code>auth.service.ts</code></td><td>Authentification, session, signaux</td></tr>
+    </tbody>
+  </table>
+
+  <hr />
+  <p>Si vous souhaitez, je peux :</p>
+  <ul>
+    <li>Générer une version PDF / DOCX formelle (actuellement ce document est fourni sous forme d'un fichier .doc HTML pour compatibilité Word). </li>
+    <li>Produire un README.md résumé dans le repo (sans modifier le code) ou ajouter des tests unitaires pour <code>applyMoveToFen</code>.</li>
+  </ul>
+
+  <p>Fin de la documentation.</p>
+</body>
+</html>
